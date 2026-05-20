@@ -1,0 +1,37 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.ruff_cache/
+backend/data.db
+
+# Node / Next.js
+web/node_modules/
+web/.next/
+web/out/
+web/.env.local
+web/.env.production.local
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
+
+# Modal
+.modal/
+
+# IDE
+.vscode/
+.idea/
+*.swp
