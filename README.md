@@ -122,7 +122,7 @@ The diff is wrapped in `<diff>` tags inside the user message; each lens system p
 | CodeRabbit    | 1             | ~20s    | Yes (OSS only) | No        |
 | Korbit        | 1             | ~25s    | Yes            | No        |
 | Bito          | 1             | ~15s    | Yes            | No        |
-| **PR Sentinel** | **4**       | **~15s** | **5 PRs/mo** | **Planned** |
+| **PR Sentinel** | **4**       | **~15s** | **V0.1 demo** | **Planned** |
 
 The unique angle: competitors run one model from one perspective. PR Sentinel runs four specialized reviewers in parallel, each with a different attack surface. The adversarial lens finds what the security lens normalizes. The reality checker finds what the code reviewer ignores.
 

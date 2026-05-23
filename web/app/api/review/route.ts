@@ -24,6 +24,49 @@ const API_KEY = process.env.PR_SENTINEL_API_KEY || "";
 // before the backend ever sees the request.
 const MAX_PROXY_BODY_BYTES = 200_000;
 
+
+/**
+ * Read the request body as UTF-8 text, but bail out the moment we exceed
+ * `maxBytes` actual bytes (not UTF-16 string length, not the declared header).
+ * Returns null if the body is over the cap; the caller should 413.
+ */
+async function readBoundedBody(
+  req: Request,
+  maxBytes: number
+): Promise<string | null> {
+  if (!req.body) return "";
+  const reader = req.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let bytes = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* best-effort cancel */
+        }
+        return null;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+  } catch {
+    try {
+      await reader.cancel();
+    } catch {
+      /* ignore */
+    }
+    return null;
+  }
+  return text;
+}
+
 export async function POST(req: Request) {
   if (!API_KEY) {
     return NextResponse.json(
@@ -33,20 +76,18 @@ export async function POST(req: Request) {
   }
 
   const declared = parseInt(req.headers.get("content-length") || "0", 10);
-  if (declared > MAX_PROXY_BODY_BYTES) {
+  if (declared && declared > MAX_PROXY_BODY_BYTES) {
     return NextResponse.json(
       { detail: `Request body too large (max ${MAX_PROXY_BODY_BYTES} bytes).` },
       { status: 413 }
     );
   }
 
-  let body: string;
-  try {
-    body = await req.text();
-  } catch {
-    return NextResponse.json({ detail: "Failed to read request body" }, { status: 400 });
-  }
-  if (body.length > MAX_PROXY_BODY_BYTES) {
+  // Stream-read the body, counting actual bytes (UTF-8) and aborting early on
+  // overflow. Avoids req.text() which would buffer unboundedly when
+  // Content-Length is missing or lying.
+  const body = await readBoundedBody(req, MAX_PROXY_BODY_BYTES);
+  if (body === null) {
     return NextResponse.json(
       { detail: `Request body too large (max ${MAX_PROXY_BODY_BYTES} bytes).` },
       { status: 413 }

@@ -70,11 +70,11 @@ Every HOW decision made during the build. JJ provides WHAT; Claude handles HOW.
 
 ## HOW-05: CORS policy on backend
 
-**Topic**: Lock down CORS or allow all origins for MVP?
+**Topic**: Lock down CORS or allow all origins?
 
-**Preference**: Allow all origins (`allow_origins=["*"]`) for MVP.
+**Preference**: Locked to `CORS_ALLOWED_ORIGINS` env var (default `http://localhost:3000`). No wildcards.
 
-**Why**: The demo frontend URL isn't known at build time (Vercel assigns a random URL). For V0.2, set `CORS_ORIGINS` env var and lock to the Vercel domain + localhost. Documented in `main.py` comment.
+**Why**: An open CORS policy lets every site on the internet pin our cost-bearing endpoint. The Modal secret bundle includes `CORS_ALLOWED_ORIGINS` set to the production Vercel URL. (Round-1 review caught the original wildcard as a real abuse vector; this is the post-fix decision.)
 
 ---
 

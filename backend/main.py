@@ -186,13 +186,13 @@ async def review_sync(
     if all_lenses_failed(lenses):
         # No lens actually returned a verdict; pretending this is a real review
         # ("NEEDS-FIXES across the board") would be a fantasy result. Surface the
-        # failure to the caller.
+        # failure to the caller; persist the raw lens errors for debugging.
         await save_run(
             run_id=run_id,
             pr_url=req.pr_url or "",
             status="failed",
             verdict=None,
-            lenses={"errors": [lens for lens in lenses.values()]},
+            lenses=lenses,
             started_at=started_at,
             finished_at=finished_at,
         )
