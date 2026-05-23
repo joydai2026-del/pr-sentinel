@@ -62,7 +62,7 @@ const FAQ = [
   },
   {
     q: "What happens with my code?",
-    a: "Diffs are sent to the Claude API and our backend. We do not store diffs permanently. Only run metadata (verdict, timestamp) is stored.",
+    a: "Diffs are sent to the Claude API and our backend. The raw diff text is NOT stored. We do store: the final verdict, run timestamp, and the four lens summaries plus their must-fix lists. Those summaries may reference function names or lines from your diff, since that is how the lenses describe what they found. Treat anything you paste as discoverable by anyone holding the backend API key. We do not run the diff through any third-party other than Anthropic.",
   },
   {
     q: "What's the status of the GitHub App?",

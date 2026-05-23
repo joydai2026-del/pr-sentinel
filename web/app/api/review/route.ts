@@ -19,6 +19,11 @@ export const dynamic = "force-dynamic";
 const BACKEND_URL = process.env.PR_SENTINEL_BACKEND_URL || "http://localhost:8000";
 const API_KEY = process.env.PR_SENTINEL_API_KEY || "";
 
+// 200 KB is comfortably above the backend's 100 KB diff cap + JSON overhead.
+// Rejecting oversized payloads here prevents abuse of serverless-edge memory/egress
+// before the backend ever sees the request.
+const MAX_PROXY_BODY_BYTES = 200_000;
+
 export async function POST(req: Request) {
   if (!API_KEY) {
     return NextResponse.json(
@@ -27,11 +32,25 @@ export async function POST(req: Request) {
     );
   }
 
+  const declared = parseInt(req.headers.get("content-length") || "0", 10);
+  if (declared > MAX_PROXY_BODY_BYTES) {
+    return NextResponse.json(
+      { detail: `Request body too large (max ${MAX_PROXY_BODY_BYTES} bytes).` },
+      { status: 413 }
+    );
+  }
+
   let body: string;
   try {
     body = await req.text();
   } catch {
     return NextResponse.json({ detail: "Failed to read request body" }, { status: 400 });
+  }
+  if (body.length > MAX_PROXY_BODY_BYTES) {
+    return NextResponse.json(
+      { detail: `Request body too large (max ${MAX_PROXY_BODY_BYTES} bytes).` },
+      { status: 413 }
+    );
   }
 
   const upstream = await fetch(`${BACKEND_URL}/review/sync`, {

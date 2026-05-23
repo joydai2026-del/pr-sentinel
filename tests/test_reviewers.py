@@ -253,12 +253,46 @@ def test_parser_coerces_non_list_must_fixes():
     assert isinstance(result["must_fixes"], list)
 
 
-def test_parser_handles_garbage():
+def test_parser_handles_garbage_and_marks_error():
+    """Garbage text must flow through all_lenses_failed: needs _error: True."""
     from reviewers import _parse_lens_response
 
     result = _parse_lens_response("definitely not json", "code_review")
     assert result["verdict"] == "NEEDS-FIXES"
     assert result["must_fixes"]
+    assert result.get("_error") is True
+
+
+def test_parser_handles_empty_text_and_marks_error():
+    """Empty response from the model is also a failure, not a fake NEEDS-FIXES verdict."""
+    from reviewers import _parse_lens_response
+
+    for empty in ("", "   ", "\n\n", "```\n```"):
+        result = _parse_lens_response(empty, "security")
+        assert result["verdict"] == "NEEDS-FIXES"
+        assert result.get("_error") is True, f"empty input {empty!r} should mark _error"
+
+
+def test_parser_handles_non_object_and_marks_error():
+    """JSON that's a list/string/number is not a valid lens reply."""
+    from reviewers import _parse_lens_response
+
+    for payload in ("[1, 2, 3]", '"hello"', "42", "null"):
+        result = _parse_lens_response(payload, "reality")
+        assert result["verdict"] == "NEEDS-FIXES"
+        assert result.get("_error") is True
+
+
+def test_all_lenses_failed_catches_parse_failures():
+    """Even when every lens returns malformed text (not exceptions), all_lenses_failed
+    must trip so the API returns 502 instead of a fake completed verdict."""
+    from reviewers import _parse_lens_response, all_lenses_failed
+
+    lenses = {
+        name: _parse_lens_response("garbage from model", name)
+        for name in ("code_review", "security", "reality", "adversarial")
+    }
+    assert all_lenses_failed(lenses) is True
 
 
 def test_user_message_escapes_xml_close_tags():

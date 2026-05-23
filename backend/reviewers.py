@@ -113,12 +113,18 @@ _FENCE_RE = re.compile(r"^\s*```(?:json)?\s*\n?|\n?\s*```\s*$", re.DOTALL)
 
 
 def _validate_schema(payload: Any, lens_name: str) -> dict[str, Any]:
-    """Coerce a parsed JSON payload to {verdict, summary, must_fixes}, defaulting safely."""
+    """Coerce a parsed JSON payload to {verdict, summary, must_fixes}, defaulting safely.
+
+    Returns {"_error": True, ...} when the payload is structurally wrong (not a dict);
+    callers treat that the same as an exception fallback so the run is marked failed,
+    not a fake-complete verdict.
+    """
     if not isinstance(payload, dict):
         return {
             "verdict": "NEEDS-FIXES",
             "summary": f"Lens {lens_name} returned non-object JSON",
             "must_fixes": ["Lens response was not a JSON object"],
+            "_error": True,
         }
     verdict = str(payload.get("verdict", "")).upper().strip()
     if verdict not in VALID_VERDICTS:
@@ -134,8 +140,20 @@ def _validate_schema(payload: Any, lens_name: str) -> dict[str, Any]:
 
 
 def _parse_lens_response(text: str, lens_name: str) -> dict[str, Any]:
-    """Parse Claude's response, extracting JSON robustly and validating the schema."""
+    """Parse Claude's response, extracting JSON robustly and validating the schema.
+
+    Parse failures (empty/malformed text, JSONDecodeError) return an _error=True dict.
+    Without that marker, all_lenses_failed() would miss the "every lens returned
+    garbage" case and we'd ship a fantasy completed-review verdict to the caller.
+    """
     cleaned = _FENCE_RE.sub("", (text or "").strip()).strip()
+    if not cleaned:
+        return {
+            "verdict": "NEEDS-FIXES",
+            "summary": f"Lens {lens_name} returned empty response",
+            "must_fixes": ["Lens response was empty"],
+            "_error": True,
+        }
     try:
         payload = json.loads(cleaned)
     except json.JSONDecodeError as e:
@@ -143,6 +161,7 @@ def _parse_lens_response(text: str, lens_name: str) -> dict[str, Any]:
             "verdict": "NEEDS-FIXES",
             "summary": f"Lens {lens_name} returned unparseable response: {cleaned[:200]}",
             "must_fixes": [f"Parse error: {e}"],
+            "_error": True,
         }
     return _validate_schema(payload, lens_name)
 
