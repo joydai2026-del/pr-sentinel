@@ -20,7 +20,7 @@ from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from aggregator import build_review_result
 from reviewers import all_lenses_failed, run_all_lenses
@@ -32,6 +32,11 @@ log = logging.getLogger("pr_sentinel")
 # char-based bound. 100 KB-equivalent ASCII keeps a worst-case 4-lens Sonnet call well
 # under $0.50.
 MAX_DIFF_CHARS = int(os.environ.get("MAX_DIFF_CHARS", 100_000))
+
+# Absolute byte cap on /review/sync and /webhook request bodies. Enforced at the ASGI
+# stream layer BEFORE auth/HMAC/JSON-parse, so an unauthenticated attacker cannot make
+# us buffer arbitrary chunked bytes before we run _require_api_key().
+MAX_REQUEST_BYTES = int(os.environ.get("MAX_REQUEST_BYTES", 200_000))
 
 # Rate limit: per-IP requests within a sliding window. In-memory only, so it resets per
 # container; for multi-container scale, swap for Redis or Cloudflare. Documented in README.
@@ -138,6 +143,24 @@ def _require_api_key(presented: str | None) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key")
 
 
+async def _read_body_bounded(request: Request, max_bytes: int) -> bytes:
+    """Stream-read the request body, aborting at max_bytes. Used by /review/sync and
+    /webhook to put a byte cap BEFORE any expensive parse/auth-verify work."""
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        if not chunk:
+            continue
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Request body too large (max {max_bytes} bytes)",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 # Routes
 
 @app.get("/healthz")
@@ -147,12 +170,19 @@ async def healthz():
 
 @app.post("/review/sync", response_model=ReviewResponse)
 async def review_sync(
-    req: ReviewRequest,
     request: Request,
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ):
+    # Auth before any expensive work; size-cap before parsing so an attacker cannot
+    # force us to buffer arbitrary chunked bytes pre-auth (Codex round-5 finding).
     _require_api_key(x_api_key)
     _enforce_rate_limit(_client_ip(request))
+
+    body = await _read_body_bounded(request, MAX_REQUEST_BYTES)
+    try:
+        req = ReviewRequest.model_validate_json(body)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
     if not req.diff.strip():
         raise HTTPException(status_code=400, detail="diff cannot be empty")
@@ -249,7 +279,7 @@ async def webhook(request: Request):
             detail="GITHUB_WEBHOOK_SECRET not configured. Webhook disabled.",
         )
 
-    body = await request.body()
+    body = await _read_body_bounded(request, MAX_REQUEST_BYTES)
     signature = request.headers.get("X-Hub-Signature-256", "")
     expected = "sha256=" + hmac.new(
         GITHUB_WEBHOOK_SECRET.encode("utf-8"), body, hashlib.sha256

@@ -295,6 +295,62 @@ def test_all_lenses_failed_catches_parse_failures():
     assert all_lenses_failed(lenses) is True
 
 
+def test_review_sync_rejects_unauthed_before_parsing_body():
+    """A request without X-API-Key must fail 401 BEFORE the body is parsed.
+    This prevents an attacker from forcing us to buffer/parse arbitrary JSON pre-auth.
+    """
+    from fastapi.testclient import TestClient
+
+    os.environ.setdefault("PR_SENTINEL_API_KEY", "test-key-for-auth-test")
+    import importlib
+
+    import main as main_module
+
+    importlib.reload(main_module)
+    client = TestClient(main_module.app)
+
+    # An obviously oversized + malformed body: if the endpoint parses BEFORE auth, the
+    # response code would be 422 (validation error) or 413 (size cap). With auth-first
+    # ordering, it must be 401, full stop.
+    huge_body = '{"diff": "' + "x" * 50_000 + '"}'
+    resp = client.post(
+        "/review/sync",
+        content=huge_body,
+        headers={"Content-Type": "application/json"},
+    )
+    assert resp.status_code == 401, (
+        f"unauthed POST returned {resp.status_code}; should be 401 before any body parsing"
+    )
+
+
+def test_review_sync_caps_body_before_parse():
+    """An authed but oversized body must 413, not 422 (i.e., cap fires before parse)."""
+    from fastapi.testclient import TestClient
+
+    os.environ["PR_SENTINEL_API_KEY"] = "test-key-for-size-test"
+    os.environ["MAX_REQUEST_BYTES"] = "1024"
+    import importlib
+
+    import main as main_module
+
+    importlib.reload(main_module)
+    client = TestClient(main_module.app)
+
+    too_big = b'{"diff": "' + (b"x" * 2_000) + b'"}'
+    resp = client.post(
+        "/review/sync",
+        content=too_big,
+        headers={
+            "Content-Type": "application/json",
+            "X-API-Key": "test-key-for-size-test",
+        },
+    )
+    assert resp.status_code == 413, f"expected 413 for oversized body, got {resp.status_code}"
+
+    # Reset env so other tests aren't affected
+    del os.environ["MAX_REQUEST_BYTES"]
+
+
 def test_user_message_escapes_xml_close_tags():
     """An attacker who puts </diff> in their diff must not be able to close our wrapper."""
     from reviewers import _build_user_message
