@@ -96,15 +96,15 @@ const FAQ = [
   },
   {
     q: "What model does PR Sentinel use?",
-    a: "Claude Sonnet 4.6 for all 4 review lenses — fast, accurate, and cost-efficient. The aggregation logic is pure Python with no additional LLM calls.",
+    a: "Claude Sonnet 4.6 for all 4 review lenses. fast, accurate, and cost-efficient. The aggregation logic is pure Python with no additional LLM calls.",
   },
   {
     q: "Does it read my entire codebase?",
-    a: "No. PR Sentinel only sees the unified diff for each PR — the same thing a human reviewer sees. No codebase indexing, no embeddings database.",
+    a: "No. PR Sentinel only sees the unified diff for each PR. the same thing a human reviewer sees. No codebase indexing, no embeddings database.",
   },
   {
     q: "What happens with my code?",
-    a: "Diffs are sent to the Claude API and our backend. We do not store diffs permanently — only run metadata (verdict, timestamp) is stored.",
+    a: "Diffs are sent to the Claude API and our backend. We do not store diffs permanently. only run metadata (verdict, timestamp) is stored.",
   },
   {
     q: "When does the GitHub App support arrive?",
@@ -159,7 +159,7 @@ export default function HomePage() {
             href={GITHUB_APP_URL}
             className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors"
           >
-            Add to GitHub — Free
+            Add to GitHub. Free
           </a>
           <Link
             href="/demo"
@@ -314,7 +314,7 @@ export default function HomePage() {
 
       {/* Footer */}
       <footer className="border-t border-gray-800 text-center py-8 text-gray-500 text-sm">
-        <p>PR Sentinel v0.1 — Built with Claude Sonnet 4.6 + FastAPI + Next.js</p>
+        <p>PR Sentinel v0.1. Built with Claude Sonnet 4.6 + FastAPI + Next.js</p>
         <p className="mt-1">
           <Link href="/demo" className="hover:text-gray-300 underline">
             Try the demo

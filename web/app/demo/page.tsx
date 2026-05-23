@@ -260,7 +260,7 @@ export default function DemoPage() {
           </h1>
           <p className="text-gray-400">
             Paste a unified diff below or pick an example. Results come from
-            live Claude API calls — no mocks.
+            live Claude API calls. no mocks.
           </p>
         </div>
 

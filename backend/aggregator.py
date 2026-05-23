@@ -5,31 +5,37 @@ Rules:
 - BLOCK if ANY lens returns BLOCK
 - NEEDS-FIXES if ANY lens returns NEEDS-FIXES (and none is BLOCK)
 - PASS only if ALL lenses return PASS
+
+Unknown/missing verdicts are treated as NEEDS-FIXES (fail-closed).
 """
 
+from types import MappingProxyType
 from typing import Any
 
 
-VERDICT_PRIORITY = {"BLOCK": 3, "NEEDS-FIXES": 2, "PASS": 1}
+VERDICT_PRIORITY = MappingProxyType({"BLOCK": 3, "NEEDS-FIXES": 2, "PASS": 1})
+_UNKNOWN_PRIORITY = 2  # same as NEEDS-FIXES. fail closed
+
+
+def _coerce_verdict(raw: Any) -> str:
+    verdict = str(raw or "").upper().strip()
+    return verdict if verdict in VERDICT_PRIORITY else "NEEDS-FIXES"
 
 
 def aggregate_verdict(lenses: dict[str, dict[str, Any]]) -> str:
     """Return the worst-case verdict across all lenses."""
-    verdicts = [
-        lens_result.get("verdict", "NEEDS-FIXES")
-        for lens_result in lenses.values()
-    ]
-    # Normalize
-    verdicts = [v.upper() for v in verdicts]
-    # Pick highest priority
-    highest = max(verdicts, key=lambda v: VERDICT_PRIORITY.get(v, 2))
-    return highest
+    if not lenses:
+        return "NEEDS-FIXES"
+    verdicts = [_coerce_verdict(lens.get("verdict")) for lens in lenses.values()]
+    return max(verdicts, key=lambda v: VERDICT_PRIORITY.get(v, _UNKNOWN_PRIORITY))
 
 
 def count_must_fixes(lenses: dict[str, dict[str, Any]]) -> int:
     total = 0
     for lens_result in lenses.values():
-        total += len(lens_result.get("must_fixes", []))
+        fixes = lens_result.get("must_fixes", [])
+        if isinstance(fixes, list):
+            total += len(fixes)
     return total
 
 

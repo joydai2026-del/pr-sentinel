@@ -1,21 +1,29 @@
 """
-Conftest: skip all tests if ANTHROPIC_API_KEY is not set.
+Conftest: skip ONLY tests that actually need a live Anthropic API key.
+
+Tests opt in to the live-API requirement by adding @pytest.mark.live_api.
+Pure-logic tests (aggregator, parsers) always run.
 """
 
 import os
+
 import pytest
 
+
 def pytest_configure(config):
-    """Register custom marks."""
     config.addinivalue_line("markers", "asyncio: mark test as async")
+    config.addinivalue_line(
+        "markers",
+        "live_api: requires ANTHROPIC_API_KEY in environment to run",
+    )
 
 
 def pytest_collection_modifyitems(items):
-    """Skip tests requiring ANTHROPIC_API_KEY if it's not set."""
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not key:
-        skip_marker = pytest.mark.skip(
-            reason="ANTHROPIC_API_KEY not set — set it to run real API tests"
-        )
-        for item in items:
+    if os.environ.get("ANTHROPIC_API_KEY", ""):
+        return
+    skip_marker = pytest.mark.skip(
+        reason="ANTHROPIC_API_KEY not set; live_api tests skipped"
+    )
+    for item in items:
+        if "live_api" in item.keywords:
             item.add_marker(skip_marker)

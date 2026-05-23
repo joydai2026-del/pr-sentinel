@@ -21,7 +21,7 @@ Estimated time: 15 minutes.
    - **GitHub App name**: `PR Sentinel` (must be unique globally; try `pr-sentinel-jj` if taken)
    - **Homepage URL**: your Vercel frontend URL (e.g., `https://pr-sentinel.vercel.app`)
    - **Webhook URL**: `https://YOUR_MODAL_URL/webhook`
-   - **Webhook secret**: generate a random string (save it — you'll need it in Step 3)
+   - **Webhook secret**: generate a random string (save it. you'll need it in Step 3)
 
 3. Permissions (Repository permissions):
    - **Pull requests**: Read
@@ -42,7 +42,7 @@ Estimated time: 15 minutes.
 
 1. On the App settings page, scroll to **Private keys**.
 2. Click **Generate a private key**.
-3. A `.pem` file downloads automatically. Keep this safe — it's the App's identity.
+3. A `.pem` file downloads automatically. Keep this safe. it's the App's identity.
 
 4. Note these values from the App page:
    - **App ID** (visible at the top, e.g., `123456`)
@@ -82,7 +82,7 @@ modal deploy backend/modal_app.py
 ## Step 5: Test the webhook
 
 Open a test PR in a repo where the App is installed. Within ~20 seconds you should see:
-- A GitHub Check Run appear on the PR (in V0.2 — the webhook stub is live but the check run posting is V0.2 work).
+- A GitHub Check Run appear on the PR (in V0.2. the webhook stub is live but the check run posting is V0.2 work).
 - The webhook endpoint at `/webhook` logs the event.
 
 To verify the webhook is receiving events:

@@ -1,4 +1,4 @@
-# HOW-DECISION.md — PR Sentinel MVP v0.1
+# HOW-DECISION.md. PR Sentinel MVP v0.1
 
 Every HOW decision made during the build. JJ provides WHAT; Claude handles HOW.
 
@@ -14,15 +14,15 @@ Every HOW decision made during the build. JJ provides WHAT; Claude handles HOW.
 | B) `claude-sonnet-4-6` | Fast, accurate, 4x cheaper than Opus | Slightly less depth on very complex logic |
 | C) `claude-haiku-3-5` | Cheapest | Too shallow for security/adversarial reasoning |
 
-**Preference: B** — claude-sonnet-4-6 for all 4 lenses.
+**Preference: B**. claude-sonnet-4-6 for all 4 lenses.
 
-**Why**: Cost math matters for a review tool. Each PR review calls Claude 4x. At Opus pricing (~$15/M output tokens), a team running 100 PRs/day hits ~$150/day just in lens costs. Sonnet runs ~$3/M output tokens — roughly 5x cheaper with 85-90% of the quality for code review tasks. The adversarial and security lenses benefit from multi-turn reasoning chains, which Sonnet handles well. Opus is reserved for future "deep investigation" mode (V0.3).
+**Why**: Cost math matters for a review tool. Each PR review calls Claude 4x. At Opus pricing (~$15/M output tokens), a team running 100 PRs/day hits ~$150/day just in lens costs. Sonnet runs ~$3/M output tokens. roughly 5x cheaper with 85-90% of the quality for code review tasks. The adversarial and security lenses benefit from multi-turn reasoning chains, which Sonnet handles well. Opus is reserved for future "deep investigation" mode (V0.3).
 
 **Researched via**: Anthropic pricing page + Sonnet model card benchmarks.
 
 ---
 
-## HOW-02: Storage backend — Supabase vs SQLite
+## HOW-02: Storage backend. Supabase vs SQLite
 
 **Topic**: Where to store review run metadata?
 
@@ -50,7 +50,7 @@ Every HOW decision made during the build. JJ provides WHAT; Claude handles HOW.
 | B) OAuth App | Easier to register | Broader permission scope, user-bound not install-bound |
 | C) Personal Access Token | Trivial setup | Not appropriate for a product; not per-user |
 
-**Preference: A** — GitHub App with JWT auth.
+**Preference: A**. GitHub App with JWT auth.
 
 **Why**: PR Sentinel is a GitHub App product, not a personal tool. GitHub Apps get fine-grained permissions (pull_requests: read, checks: write), can be installed per-repo, and scale to multiple users. PAT is not viable for a product.
 
@@ -58,7 +58,7 @@ Every HOW decision made during the build. JJ provides WHAT; Claude handles HOW.
 
 ---
 
-## HOW-04: Frontend routing — pages vs App Router
+## HOW-04: Frontend routing. pages vs App Router
 
 **Topic**: Next.js App Router vs Pages Router?
 
@@ -92,7 +92,7 @@ Every HOW decision made during the build. JJ provides WHAT; Claude handles HOW.
 
 **Topic**: `asyncio.gather` vs serial calls for 4 lenses?
 
-**Preference**: `asyncio.gather` — all 4 run in parallel.
+**Preference**: `asyncio.gather`. all 4 run in parallel.
 
 **Why**: The anthropic Python SDK supports async. 4 parallel calls take ~the same wall time as 1 call (~5-15s), instead of 20-60s serial. FastAPI runs async natively. This is the core latency advantage of PR Sentinel.
 
@@ -108,7 +108,7 @@ Every HOW decision made during the build. JJ provides WHAT; Claude handles HOW.
 
 ---
 
-## HOW-09: Test design — mock vs real API calls
+## HOW-09: Test design. mock vs real API calls
 
 **Topic**: Should tests use VCR cassettes / mocks, or real Claude API calls?
 
@@ -122,6 +122,6 @@ Every HOW decision made during the build. JJ provides WHAT; Claude handles HOW.
 
 **Topic**: Modal `@web_endpoint` vs `@asgi_app` for FastAPI?
 
-**Preference**: `@asgi_app()` decorator — wraps the full FastAPI app.
+**Preference**: `@asgi_app()` decorator. wraps the full FastAPI app.
 
 **Why**: `@asgi_app()` supports all FastAPI features (path params, middleware, CORS, OpenAPI docs). `@web_endpoint` is simpler but limited to one function/endpoint. PR Sentinel needs multiple routes.
