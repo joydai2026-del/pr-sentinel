@@ -33,12 +33,13 @@ PR Sentinel runs 4 independent AI reviewers in parallel on every diff: a code qu
 4. Start the web demo in a second terminal:
    ```bash
    cd web
-   echo "NEXT_PUBLIC_BACKEND_URL=http://localhost:8000" > .env.local
-   echo "NEXT_PUBLIC_API_KEY=$PR_SENTINEL_API_KEY" >> .env.local
+   echo "PR_SENTINEL_BACKEND_URL=http://localhost:8000" > .env.local
+   echo "PR_SENTINEL_API_KEY=$PR_SENTINEL_API_KEY" >> .env.local
    npm install && npm run dev
    ```
+   These env vars are **server-only**, never `NEXT_PUBLIC_*`. The browser talks to a Next.js route at `/api/review`; the route holds the key and proxies to the backend, so nothing secret ships in the JS bundle.
 
-5. Open `http://localhost:3000/demo`, or call the API directly:
+5. Open `http://localhost:3000/demo`, or call the backend directly with the key:
    ```bash
    curl -X POST http://localhost:8000/review/sync \
      -H "Content-Type: application/json" \
@@ -85,12 +86,12 @@ modal deploy backend/modal_app.py
 
 ```bash
 cd web
-vercel env add NEXT_PUBLIC_BACKEND_URL production   # e.g. https://<...>.modal.run
-vercel env add NEXT_PUBLIC_API_KEY production       # same value as PR_SENTINEL_API_KEY
+vercel env add PR_SENTINEL_BACKEND_URL production   # e.g. https://<...>.modal.run
+vercel env add PR_SENTINEL_API_KEY production       # same value as the backend's PR_SENTINEL_API_KEY
 vercel --prod
 ```
 
-Both env vars are baked at build time. Set them BEFORE `vercel --prod` or the production bundle will point at `http://localhost:8000` with no API key.
+Both env vars are **server-only** (no `NEXT_PUBLIC_` prefix), so they never reach the browser bundle. They are read at request time by the Next.js route at `web/app/api/review/route.ts`, which is the only thing that talks to the backend.
 
 ---
 
@@ -138,12 +139,15 @@ The unique angle: competitors run one model from one perspective. PR Sentinel ru
 
 ## Security posture (V0.1)
 
+- The backend API key never reaches the browser. The Next.js route at `/api/review` is the only thing that talks to the backend; the key + backend URL are server-only env vars on Vercel.
 - All `POST /review/sync` and `GET /runs/:id` calls require an `X-API-Key` header. Missing or wrong key returns 401. Missing server-side config returns 503.
-- Per-IP rate limit, defaults to 20 requests / hour. In-memory, so it resets per Modal container; for multi-container scale, swap for Redis or Cloudflare.
-- Diff size capped at 100 KB (`MAX_DIFF_BYTES`). PR title capped at 500 chars, body at 8 KB.
+- Per-IP rate limit, default 20 requests/hour (`RATE_LIMIT_PER_HOUR`). In-memory only and capped at 5000 distinct IPs (`MAX_RATE_LIMIT_BUCKETS`, LRU eviction) to prevent memory DoS.
+- `X-Forwarded-For` is **ignored by default** to keep the rate limit unspoofable. Set `TRUSTED_PROXIES` to the Modal/Vercel proxy egress IP(s) once you have them; until then the limit is per-proxy, which is fine for V0.1.
+- Diff capped at 100,000 characters (`MAX_DIFF_CHARS`); PR title at 500, PR body at 8000.
 - CORS locked to `CORS_ALLOWED_ORIGINS` (defaults to `http://localhost:3000` for dev). Set it explicitly in your Modal secret before deploy.
 - `/webhook` requires `GITHUB_WEBHOOK_SECRET` and validates HMAC SHA-256 before any handling. Without the secret set, the endpoint returns 503.
-- Lens output is schema-validated. Unknown verdicts coerce to `NEEDS-FIXES` (fail closed).
+- Lens output is schema-validated. Unknown verdicts coerce to `NEEDS-FIXES` (fail closed). XML-tag escape in the prompt-injection defense is case- and whitespace-insensitive.
+- If all 4 lenses error out (bad model, quota, Anthropic down), `/review/sync` returns HTTP 502 with `status="failed"`. We do not synthesize a fake "complete" verdict.
 - See `docs/install-github-app.md` for the V0.2 GitHub App setup.
 
 ---

@@ -14,7 +14,7 @@ import logging
 import os
 import time
 import uuid
-from collections import deque
+from collections import OrderedDict, deque
 from datetime import datetime, timezone
 from typing import Any
 
@@ -23,19 +23,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from aggregator import build_review_result
-from reviewers import run_all_lenses
+from reviewers import all_lenses_failed, run_all_lenses
 from storage import get_backend, get_run, save_run
 
 log = logging.getLogger("pr_sentinel")
 
-# Max diff bytes accepted on /review/sync. 100 KB at 4 lenses x Sonnet keeps a worst-case
-# call well under $0.50; anything bigger is almost certainly an abuse attempt.
-MAX_DIFF_BYTES = int(os.environ.get("MAX_DIFF_BYTES", 100_000))
+# Max diff size on /review/sync. Pydantic's max_length counts characters, so we use a
+# char-based bound. 100 KB-equivalent ASCII keeps a worst-case 4-lens Sonnet call well
+# under $0.50.
+MAX_DIFF_CHARS = int(os.environ.get("MAX_DIFF_CHARS", 100_000))
 
 # Rate limit: per-IP requests within a sliding window. In-memory only, so it resets per
 # container; for multi-container scale, swap for Redis or Cloudflare. Documented in README.
 RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", 20))
-_request_log: dict[str, deque[float]] = {}
+_MAX_RATE_LIMIT_BUCKETS = int(os.environ.get("MAX_RATE_LIMIT_BUCKETS", 5_000))
+_request_log: OrderedDict[str, deque[float]] = OrderedDict()
+
+# Trusted proxy whitelist for X-Forwarded-For parsing. If empty, we ignore the header
+# and use request.client.host (safe default — Modal puts a proxy in front so you SHOULD
+# set this to its egress IPs once you have them; before then, every Modal request looks
+# like it comes from the same IP, which is fine for V0.1 rate-limit purposes).
+TRUSTED_PROXIES = {
+    ip.strip() for ip in os.environ.get("TRUSTED_PROXIES", "").split(",") if ip.strip()
+}
 
 API_KEY = os.environ.get("PR_SENTINEL_API_KEY", "").strip()
 GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "").strip()
@@ -65,7 +75,7 @@ app.add_middleware(
 # Request/Response models
 
 class ReviewRequest(BaseModel):
-    diff: str = Field(..., min_length=1, max_length=MAX_DIFF_BYTES)
+    diff: str = Field(..., min_length=1, max_length=MAX_DIFF_CHARS)
     pr_title: str = Field("", max_length=500)
     pr_body: str = Field("", max_length=8_000)
     pr_url: str = Field("", max_length=500)
@@ -82,16 +92,32 @@ class ReviewResponse(BaseModel):
 # Auth + rate limit
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+    """Resolve the client IP, only trusting X-Forwarded-For from configured proxies.
+
+    Without this, anyone can rotate X-Forwarded-For to bypass the per-IP rate limit and
+    fill _request_log with unique entries (memory DoS). The default is the safe one:
+    use request.client.host until TRUSTED_PROXIES is configured.
+    """
+    direct = request.client.host if request.client else "unknown"
+    if TRUSTED_PROXIES and direct in TRUSTED_PROXIES:
+        forwarded = request.headers.get("x-forwarded-for", "")
+        if forwarded:
+            return forwarded.split(",")[0].strip() or direct
+    return direct
 
 
 def _enforce_rate_limit(ip: str) -> None:
     now = time.time()
     window_start = now - 3600
-    bucket = _request_log.setdefault(ip, deque())
+    bucket = _request_log.get(ip)
+    if bucket is None:
+        bucket = deque()
+        _request_log[ip] = bucket
+        # Cap the bucket dict to keep memory bounded under IP churn.
+        while len(_request_log) > _MAX_RATE_LIMIT_BUCKETS:
+            _request_log.popitem(last=False)
+    else:
+        _request_log.move_to_end(ip)
     while bucket and bucket[0] < window_start:
         bucket.popleft()
     if len(bucket) >= RATE_LIMIT_PER_HOUR:
@@ -156,6 +182,25 @@ async def review_sync(
     )
 
     finished_at = datetime.now(timezone.utc)
+
+    if all_lenses_failed(lenses):
+        # No lens actually returned a verdict; pretending this is a real review
+        # ("NEEDS-FIXES across the board") would be a fantasy result. Surface the
+        # failure to the caller.
+        await save_run(
+            run_id=run_id,
+            pr_url=req.pr_url or "",
+            status="failed",
+            verdict=None,
+            lenses={"errors": [lens for lens in lenses.values()]},
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="All 4 review lenses failed. The model is unavailable or misconfigured.",
+        )
+
     result = build_review_result(lenses, run_id)
 
     await save_run(

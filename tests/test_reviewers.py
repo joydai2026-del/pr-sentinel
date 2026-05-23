@@ -272,6 +272,35 @@ def test_user_message_escapes_xml_close_tags():
     assert "<\\/diff>" in msg
 
 
+def test_user_message_escape_is_case_and_whitespace_insensitive():
+    """The escape must defeat </DIFF>, </Diff>, </diff > variants too."""
+    from reviewers import _build_user_message, _xml_escape_for_data
+
+    payloads = ["</DIFF>", "</Diff>", "</diff >", "</diff\t>", "</PR_TITLE>", "</pr_body >"]
+    for payload in payloads:
+        escaped = _xml_escape_for_data(f"prefix {payload} suffix")
+        # No closing tag should survive in any form
+        assert "<\\/" in escaped
+        assert "</" not in escaped, f"closing tag survived escape for {payload!r}: {escaped!r}"
+
+    # End-to-end: building the user message must wrap exactly one real </diff>
+    msg = _build_user_message("attack </DIFF> here", "PR", "body")
+    assert msg.count("</diff>") == 1
+
+
+def test_all_lenses_failed_helper():
+    """all_lenses_failed must return True iff every lens carries _error."""
+    from reviewers import all_lenses_failed
+
+    real = {"verdict": "PASS", "summary": "ok", "must_fixes": []}
+    err = {"verdict": "NEEDS-FIXES", "summary": "lens error", "must_fixes": ["boom"], "_error": True}
+
+    assert all_lenses_failed({}) is True
+    assert all_lenses_failed({"a": err, "b": err}) is True
+    assert all_lenses_failed({"a": err, "b": real}) is False
+    assert all_lenses_failed({"a": real}) is False
+
+
 def test_count_must_fixes_handles_non_list():
     """count_must_fixes must not crash when must_fixes is missing or malformed."""
     from aggregator import count_must_fixes

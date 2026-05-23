@@ -1,7 +1,5 @@
 import Link from "next/link";
 
-const GITHUB_APP_URL = "https://github.com/apps/pr-sentinel"; // placeholder until App is registered
-
 const COMPETITORS = [
   {
     name: "Greptile",
@@ -39,49 +37,9 @@ const COMPETITORS = [
     name: "PR Sentinel",
     models: "4",
     latency: "~15s",
-    freeTier: "5 PRs/mo",
+    freeTier: "V0.1 demo",
     openCore: "Planned",
     highlight: true,
-  },
-];
-
-const PRICING = [
-  {
-    tier: "Free",
-    price: "$0",
-    period: "/mo",
-    features: ["5 PRs/month", "4-lens review", "JSON report", "Community support"],
-    cta: "Start Free",
-    variant: "outline",
-  },
-  {
-    tier: "Solo",
-    price: "$19",
-    period: "/mo",
-    features: [
-      "Unlimited PRs",
-      "4-lens review",
-      "GitHub Check Runs",
-      "Email digest",
-      "Priority support",
-    ],
-    cta: "Get Solo",
-    variant: "primary",
-  },
-  {
-    tier: "Team",
-    price: "$79",
-    period: "/mo",
-    features: [
-      "Up to 10 repos",
-      "4-lens review",
-      "GitHub Check Runs",
-      "Slack notifications",
-      "Custom lens config",
-      "SLA support",
-    ],
-    cta: "Get Team",
-    variant: "outline",
   },
 ];
 
@@ -96,19 +54,19 @@ const FAQ = [
   },
   {
     q: "What model does PR Sentinel use?",
-    a: "Claude Sonnet 4.6 for all 4 review lenses. fast, accurate, and cost-efficient. The aggregation logic is pure Python with no additional LLM calls.",
+    a: "Claude Sonnet 4.6 for all 4 review lenses. Fast, accurate, and cost-efficient. The aggregation logic is pure Python with no additional LLM calls.",
   },
   {
     q: "Does it read my entire codebase?",
-    a: "No. PR Sentinel only sees the unified diff for each PR. the same thing a human reviewer sees. No codebase indexing, no embeddings database.",
+    a: "No. PR Sentinel only sees the unified diff for each PR, the same thing a human reviewer sees. No codebase indexing, no embeddings database.",
   },
   {
     q: "What happens with my code?",
-    a: "Diffs are sent to the Claude API and our backend. We do not store diffs permanently. only run metadata (verdict, timestamp) is stored.",
+    a: "Diffs are sent to the Claude API and our backend. We do not store diffs permanently. Only run metadata (verdict, timestamp) is stored.",
   },
   {
-    q: "When does the GitHub App support arrive?",
-    a: "The GitHub webhook integration is V0.2, coming within 2 weeks. For now, you can use the demo to paste any diff and get a review.",
+    q: "What's the status of the GitHub App?",
+    a: "V0.1 ships the synchronous review API and the demo UI. The GitHub App webhook pipeline (PR comments, Check Runs) is V0.2 work and is not yet wired. No public timeline. For now, you can paste any diff into the demo and get a real 4-lens review.",
   },
 ];
 
@@ -125,17 +83,14 @@ export default function HomePage() {
           <Link href="/demo" className="hover:text-white transition-colors">
             Demo
           </Link>
-          <a href="#pricing" className="hover:text-white transition-colors">
-            Pricing
-          </a>
           <a href="#faq" className="hover:text-white transition-colors">
             FAQ
           </a>
           <a
-            href={GITHUB_APP_URL}
+            href="https://github.com/joydai2026-del/pr-sentinel"
             className="bg-white text-gray-950 px-4 py-2 rounded-lg font-medium hover:bg-gray-200 transition-colors"
           >
-            Add to GitHub
+            View on GitHub
           </a>
         </div>
       </nav>
@@ -155,19 +110,22 @@ export default function HomePage() {
           collapses them into one actionable verdict.
         </p>
         <div className="flex items-center justify-center gap-4">
-          <a
-            href={GITHUB_APP_URL}
-            className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors"
-          >
-            Add to GitHub. Free
-          </a>
           <Link
             href="/demo"
-            className="border border-gray-700 hover:border-gray-500 text-gray-300 px-8 py-4 rounded-xl font-semibold text-lg transition-colors"
+            className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-colors"
           >
             Try the demo
           </Link>
+          <a
+            href="https://github.com/joydai2026-del/pr-sentinel"
+            className="border border-gray-700 hover:border-gray-500 text-gray-300 px-8 py-4 rounded-xl font-semibold text-lg transition-colors"
+          >
+            View on GitHub
+          </a>
         </div>
+        <p className="text-sm text-gray-500 mt-6">
+          V0.1: paste-a-diff demo. GitHub App webhook integration is V0.2 work and not yet wired.
+        </p>
       </section>
 
       {/* 4 Lenses */}
@@ -250,52 +208,6 @@ export default function HomePage() {
               ))}
             </tbody>
           </table>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="pricing" className="max-w-5xl mx-auto px-6 pb-24">
-        <h2 className="text-2xl font-bold text-center text-white mb-4">Pricing</h2>
-        <p className="text-center text-gray-400 mb-12">
-          Start free. Upgrade when you ship more.
-        </p>
-        <div className="grid grid-cols-3 gap-6">
-          {PRICING.map((plan) => (
-            <div
-              key={plan.tier}
-              className={`rounded-xl p-6 flex flex-col ${
-                plan.variant === "primary"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-900 border border-gray-800 text-gray-100"
-              }`}
-            >
-              <div className="mb-4">
-                <div className="text-sm font-medium opacity-70 mb-1">{plan.tier}</div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-bold">{plan.price}</span>
-                  <span className="opacity-70 text-sm">{plan.period}</span>
-                </div>
-              </div>
-              <ul className="flex-1 space-y-2 mb-6">
-                {plan.features.map((f) => (
-                  <li key={f} className="text-sm flex items-center gap-2">
-                    <span className="opacity-70">checkmark</span>
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <a
-                href={GITHUB_APP_URL}
-                className={`block text-center py-2.5 rounded-lg font-medium transition-colors ${
-                  plan.variant === "primary"
-                    ? "bg-white text-blue-600 hover:bg-gray-100"
-                    : "border border-gray-700 hover:border-gray-500 text-gray-300"
-                }`}
-              >
-                {plan.cta}
-              </a>
-            </div>
-          ))}
         </div>
       </section>
 

@@ -5,11 +5,14 @@ Each lens calls Claude with a tailored system prompt and returns structured JSON
 
 import asyncio
 import json
+import logging
 import os
 import re
 from typing import Any
 
 import anthropic
+
+log = logging.getLogger(__name__)
 
 REVIEW_MODEL = "claude-sonnet-4-6"
 
@@ -84,9 +87,14 @@ LENS_PROMPTS = {
 }
 
 
+_CLOSE_TAG_RE = re.compile(r"</\s*(diff|pr_title|pr_body)\s*>", re.IGNORECASE)
+
+
 def _xml_escape_for_data(text: str) -> str:
-    """Lightweight escape so user-supplied tag literals can't close our wrappers."""
-    return text.replace("</diff>", "<\\/diff>").replace("</pr_title>", "<\\/pr_title>").replace("</pr_body>", "<\\/pr_body>")
+    """Neutralize any closing tag literal in user-supplied data, regardless of case or
+    whitespace. The textual guardrail in the system prompt is the primary defense; this
+    is belt-and-suspenders so a model that case-folds tags can't be tricked."""
+    return _CLOSE_TAG_RE.sub(r"<\\/\1>", text or "")
 
 
 def _build_user_message(diff: str, pr_title: str, pr_body: str) -> str:
@@ -139,13 +147,27 @@ def _parse_lens_response(text: str, lens_name: str) -> dict[str, Any]:
     return _validate_schema(payload, lens_name)
 
 
-def _extract_text(response: anthropic.types.Message) -> str:
+def _extract_text(response: "anthropic.types.Message") -> str:
     """Pull plain text out of the first text block, tolerating empty/tool-use content."""
     for block in response.content or []:
         text = getattr(block, "text", None)
         if isinstance(text, str) and text:
             return text
     return ""
+
+
+_client_singleton: anthropic.AsyncAnthropic | None = None
+
+
+def _client() -> anthropic.AsyncAnthropic:
+    """Lazy module-level Anthropic client. Reusing the client lets the SDK pool HTTP
+    connections instead of paying a TCP+TLS handshake per lens."""
+    global _client_singleton
+    if _client_singleton is None:
+        _client_singleton = anthropic.AsyncAnthropic(
+            api_key=os.environ["ANTHROPIC_API_KEY"]
+        )
+    return _client_singleton
 
 
 async def run_lens(
@@ -168,9 +190,10 @@ async def run_lens(
 
     text = _extract_text(response)
     result = _parse_lens_response(text, lens_name)
+    usage = getattr(response, "usage", None)
     result["_tokens"] = {
-        "input": response.usage.input_tokens,
-        "output": response.usage.output_tokens,
+        "input": getattr(usage, "input_tokens", 0),
+        "output": getattr(usage, "output_tokens", 0),
     }
     return result
 
@@ -180,8 +203,10 @@ async def run_all_lenses(
     pr_title: str = "",
     pr_body: str = "",
 ) -> dict[str, dict[str, Any]]:
-    """Run all 4 lenses in parallel using asyncio.gather."""
-    client = anthropic.AsyncAnthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    """Run all 4 lenses in parallel using asyncio.gather. Each lens dict carries an
+    `_error` flag when it represents an exception fallback rather than a real verdict
+    from Claude; callers use this to detect total-failure (no real review happened)."""
+    client = _client()
 
     tasks = [
         run_lens(client, lens_name, diff, pr_title, pr_body)
@@ -193,13 +218,23 @@ async def run_all_lenses(
     lenses: dict[str, dict[str, Any]] = {}
     for lens_name, result in zip(LENS_PROMPTS.keys(), results):
         if isinstance(result, Exception):
+            log.warning("lens %s failed: %s", lens_name, result)
             lenses[lens_name] = {
                 "verdict": "NEEDS-FIXES",
-                "summary": f"Lens error: {result}",
+                "summary": f"Lens {lens_name} did not return a verdict ({type(result).__name__})",
                 "must_fixes": [str(result)],
                 "_tokens": {"input": 0, "output": 0},
+                "_error": True,
             }
         else:
             lenses[lens_name] = result
 
     return lenses
+
+
+def all_lenses_failed(lenses: dict[str, dict[str, Any]]) -> bool:
+    """True iff every lens result came from an exception fallback. Used by main.py to
+    raise 502 instead of pretending the review completed."""
+    if not lenses:
+        return True
+    return all(lens.get("_error") for lens in lenses.values())
