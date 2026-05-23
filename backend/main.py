@@ -33,9 +33,11 @@ log = logging.getLogger("pr_sentinel")
 # under $0.50.
 MAX_DIFF_CHARS = int(os.environ.get("MAX_DIFF_CHARS", 100_000))
 
-# Absolute byte cap on /review/sync and /webhook request bodies. Enforced at the ASGI
-# stream layer BEFORE auth/HMAC/JSON-parse, so an unauthenticated attacker cannot make
-# us buffer arbitrary chunked bytes before we run _require_api_key().
+# Absolute byte cap on /review/sync and /webhook request bodies. On /review/sync the
+# cap runs AFTER _require_api_key (auth is cheap and must come first) but BEFORE the
+# JSON parse; on /webhook, where no auth exists pre-HMAC, the cap is the first thing
+# applied. Either way, an attacker cannot make us buffer arbitrary chunked bytes past
+# the cap before any expensive work runs.
 MAX_REQUEST_BYTES = int(os.environ.get("MAX_REQUEST_BYTES", 200_000))
 
 # Rate limit: per-IP requests within a sliding window. In-memory only, so it resets per
