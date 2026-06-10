@@ -6,6 +6,31 @@ PR Sentinel runs 4 independent AI reviewers in parallel on every diff: a code qu
 
 > **Status**: V0.1 ships the synchronous review API (`POST /review/sync`) plus the demo UI. The full GitHub App pipeline (webhook delivery, PR-comment posting, Check Run creation) is V0.2; the `/webhook` endpoint verifies HMAC signatures and currently returns 501 for everything downstream. See `docs/install-github-app.md`.
 
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009688?style=flat&logo=fastapi&logoColor=white)
+![Claude](https://img.shields.io/badge/Claude-Sonnet%204.6-D97706?style=flat&logo=anthropic&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=flat&logo=next.js&logoColor=white)
+
+---
+
+## Architecture
+
+```mermaid
+graph LR
+    A[PR Diff] --> B{4 Parallel Reviewers}
+    B --> C[Code Quality]
+    B --> D[Security Engineer]
+    B --> E[Reality Checker]
+    B --> F[Adversarial Attacker]
+    C --> G[Verdict Engine]
+    D --> G
+    E --> G
+    F --> G
+    G --> H[PASS / NEEDS-FIXES / BLOCK]
+```
+
+Each reviewer runs as an independent async Claude call with its own system prompt. The adversarial lens finds what the security lens normalizes. The reality checker finds what the code reviewer ignores. All four resolve in `asyncio.gather` — total latency is roughly the slowest single call (~15s), not the sum.
+
 ---
 
 ## Quickstart (local demo)
@@ -39,7 +64,7 @@ PR Sentinel runs 4 independent AI reviewers in parallel on every diff: a code qu
    ```
    These env vars are **server-only**, never `NEXT_PUBLIC_*`. The browser talks to a Next.js route at `/api/review`; the route holds the key and proxies to the backend, so nothing secret ships in the JS bundle.
 
-5. Open `http://localhost:3000/demo`, or call the backend directly with the key:
+5. Open `http://localhost:3000/demo`, or call the backend directly:
    ```bash
    curl -X POST http://localhost:8000/review/sync \
      -H "Content-Type: application/json" \
@@ -97,6 +122,8 @@ Both env vars are **server-only** (no `NEXT_PUBLIC_` prefix), so they never reac
 
 ## How it works
 
+The diff is wrapped in `<diff>` tags inside the user message; each lens system prompt explicitly tells Claude to treat the contents as untrusted data, not instructions. Schema validation rejects any lens response whose verdict is not one of `PASS / NEEDS-FIXES / BLOCK`.
+
 ```
 PR diff + title + body
         |
@@ -110,30 +137,28 @@ PR diff + title + body
                         {verdict, lenses, run_id}
 ```
 
-The diff is wrapped in `<diff>` tags inside the user message; each lens system prompt explicitly tells Claude to treat the contents as untrusted data, not instructions. Schema validation rejects any lens response whose verdict is not one of `PASS / NEEDS-FIXES / BLOCK`.
-
 ---
 
 ## Comparison
 
-| Product       | Review models | Latency | Free tier      | Open-core |
-|---------------|---------------|---------|----------------|-----------|
-| Greptile      | 1             | ~30s    | Limited        | No        |
-| CodeRabbit    | 1             | ~20s    | Yes (OSS only) | No        |
-| Korbit        | 1             | ~25s    | Yes            | No        |
-| Bito          | 1             | ~15s    | Yes            | No        |
-| **PR Sentinel** | **4**       | **~15s** | **V0.1 demo** | **Planned** |
-
-The unique angle: competitors run one model from one perspective. PR Sentinel runs four specialized reviewers in parallel, each with a different attack surface. The adversarial lens finds what the security lens normalizes. The reality checker finds what the code reviewer ignores.
+| Product         | Review models | Latency  | Free tier      | Open-core    |
+|-----------------|---------------|----------|----------------|--------------|
+| Greptile        | 1             | ~30s     | Limited        | No           |
+| CodeRabbit      | 1             | ~20s     | Yes (OSS only) | No           |
+| Korbit          | 1             | ~25s     | Yes            | No           |
+| Bito            | 1             | ~15s     | Yes            | No           |
+| **PR Sentinel** | **4**         | **~15s** | **V0.1 demo**  | **Planned**  |
 
 ---
 
-## Stack
+## Tech stack
 
-- **Backend**: FastAPI on Modal (serverless, scales to zero), durable SQLite on a Modal Volume by default, Supabase opt-in
-- **LLM**: Claude Sonnet 4.6, 4 parallel async calls per review
-- **Frontend**: Next.js 14 App Router on Vercel
-- **GitHub integration**: GitHub App with JWT auth (V0.2, not yet wired)
+| Layer       | Tech                                                             |
+|-------------|------------------------------------------------------------------|
+| Backend     | FastAPI on Modal (serverless, scales to zero), SQLite on a Modal Volume by default, Supabase opt-in |
+| LLM         | Claude Sonnet 4.6, 4 parallel async calls per review             |
+| Frontend    | Next.js 14 App Router on Vercel                                  |
+| GitHub integration | GitHub App with JWT auth (V0.2, not yet wired)            |
 
 ---
 
