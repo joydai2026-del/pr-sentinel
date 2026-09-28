@@ -5,7 +5,7 @@ Two flavors:
 - live_api tests (marked @pytest.mark.live_api) make a real Claude call.
 - everything else (aggregator, parser, schema validation) runs offline.
 
-Run:  cd /Users/joyd/dev/pr-sentinel && .venv/bin/pytest tests/ -v
+Run (from the repo root):  .venv/bin/pytest tests/ -v
 """
 
 import os
