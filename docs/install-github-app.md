@@ -65,7 +65,7 @@ modal secret create pr-sentinel-secrets \
 
 Then redeploy:
 ```bash
-cd /Users/joyd/dev/pr-sentinel
+cd pr-sentinel   # your local checkout
 modal deploy backend/modal_app.py
 ```
 
